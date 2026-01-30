@@ -4,7 +4,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/events_aggregator
+      POSTGRES_CONNECTION_STRING: postgresql://postgres:postgres@db:5432/events_aggregator
       EVENTS_PROVIDER_URL: http://events-provider.dev-1.python-labs.ru
       EVENTS_PROVIDER_API_KEY: ${EVENTS_PROVIDER_API_KEY}
     depends_on:
