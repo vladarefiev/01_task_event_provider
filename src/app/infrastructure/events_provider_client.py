@@ -91,7 +91,7 @@ class EventsProviderClient:
 
 
 class EventsPaginator:
-    """Iterator over all events from Events Provider API."""
+    """Iterator over all events from Events Provider API. Follows next until None."""
 
     def __init__(self, client: EventsProviderClient, changed_at: str) -> None:
         self._client = client
@@ -101,7 +101,7 @@ class EventsPaginator:
         return self
 
     def __next__(self) -> dict[str, Any]:
-        if not hasattr(self, "_next_url") or self._next_url is None:
+        if not hasattr(self, "_results"):
             data = self._client.events(self._changed_at)
             self._results = data.get("results", [])
             self._next_url = data.get("next")
@@ -118,8 +118,5 @@ class EventsPaginator:
             self._next_url = data.get("next")
             self._idx = 0
             if self._results:
-                event = self._results[0]
-                self._idx = 1
-                return event
-
+                return self.__next__()
         raise StopIteration
