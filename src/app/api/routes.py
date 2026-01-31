@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime, timezone
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import (
@@ -38,7 +38,7 @@ seats_cache = SeatsCache()
 _sync_lock: bool = False
 
 
-async def _run_sync_background() -> None:
+async def _run_sync_background(changed_at: Optional[datetime] = None) -> None:
     global _sync_lock
     if _sync_lock:
         logger.warning("Sync already in progress, skipping")
@@ -48,8 +48,9 @@ async def _run_sync_background() -> None:
         client = EventsProviderClient(
             settings.events_provider_url, settings.events_provider_api_key
         )
+        changed_at_str = changed_at.strftime("%Y-%m-%d") if changed_at else None
         async with async_session_maker() as session:
-            await run_sync(session, client)
+            await run_sync(session, client, changed_at_override=changed_at_str)
     finally:
         _sync_lock = False
 
@@ -91,8 +92,11 @@ async def health() -> dict[str, str]:
 
 
 @router.post("/sync/trigger")
-async def trigger_sync(background_tasks: BackgroundTasks) -> dict[str, str]:
-    background_tasks.add_task(_run_sync_background)
+async def trigger_sync(
+    background_tasks: BackgroundTasks,
+    changed_at: Optional[datetime] = Query(None, description="Sync events changed from this date (ISO format)"),
+) -> dict[str, str]:
+    background_tasks.add_task(_run_sync_background, changed_at)
     return {"status": "started"}
 
 

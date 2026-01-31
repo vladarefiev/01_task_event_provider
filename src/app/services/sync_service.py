@@ -10,11 +10,13 @@ from app.infrastructure.repositories.sync_repository import SyncMetadataReposito
 logger = logging.getLogger(__name__)
 
 FIRST_SYNC_DATE = "2000-01-01"
+COMMIT_BATCH_SIZE = 500  # commit every N events so data is visible during long syncs
 
 
 async def run_sync(
     session: AsyncSession,
     client: EventsProviderClient,
+    changed_at_override: str | None = None,
 ) -> None:
     """Run full sync from Events Provider API."""
     sync_repo = SyncMetadataRepository(session)
@@ -29,7 +31,11 @@ async def run_sync(
     await session.commit()
 
     try:
-        changed_at = meta.last_changed_at or FIRST_SYNC_DATE
+        changed_at = (
+            changed_at_override
+            if changed_at_override is not None
+            else (meta.last_changed_at or FIRST_SYNC_DATE)
+        )
         logger.info("Starting sync with changed_at=%s", changed_at)
 
         max_changed_at = changed_at
@@ -50,6 +56,10 @@ async def run_sync(
                 dt = event_changed[:10]  # YYYY-MM-DD
                 if dt > max_changed_at:
                     max_changed_at = dt
+
+            if count % COMMIT_BATCH_SIZE == 0:
+                await session.commit()
+                logger.info("Committed batch: %d events so far", count)
 
         await sync_repo.update_status(
             "success",
