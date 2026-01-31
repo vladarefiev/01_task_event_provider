@@ -168,7 +168,7 @@ async def get_seats(
     return SeatsResponse(event_id=event_id, available_seats=seats)
 
 
-@router.post("/tickets", response_model=TicketCreateResponse)
+@router.post("/tickets", response_model=TicketCreateResponse, status_code=201)
 async def create_ticket(
     body: TicketCreateRequest,
     session: AsyncSession = Depends(get_db),
