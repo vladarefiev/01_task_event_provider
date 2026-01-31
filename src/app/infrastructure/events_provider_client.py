@@ -85,7 +85,9 @@ class EventsProviderClient:
         """Cancel registration for an event."""
         url = f"{self._base_url}/api/events/{event_id}/unregister/"
         with httpx.Client(timeout=30.0) as client:
-            resp = client.delete(url, json={"ticket_id": ticket_id}, headers=self._headers())
+            resp = client.request(
+                "DELETE", url, json={"ticket_id": ticket_id}, headers=self._headers()
+            )
             resp.raise_for_status()
 
 
