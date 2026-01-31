@@ -26,7 +26,6 @@ from app.infrastructure.events_provider_client import EventsProviderClient
 from app.infrastructure.models import Event, Place
 from app.infrastructure.repositories.event_repository import EventRepository
 from app.infrastructure.repositories.ticket_repository import TicketRepository
-from app.services.seats_cache import SeatsCache
 from app.services.sync_service import run_sync
 
 logger = logging.getLogger(__name__)
@@ -34,7 +33,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["api"])
 
 # Shared state
-seats_cache = SeatsCache()
 _sync_lock: bool = False
 
 
@@ -158,13 +156,8 @@ async def get_seats(
     if event.status != "published":
         raise HTTPException(status_code=400, detail="Event is not published for registration")
 
-    cached = seats_cache.get(str(event_id))
-    if cached is not None:
-        return SeatsResponse(event_id=event_id, available_seats=cached)
-
     client = EventsProviderClient(settings.events_provider_url, settings.events_provider_api_key)
     seats = client.seats(str(event_id))
-    seats_cache.set(str(event_id), seats)
     return SeatsResponse(event_id=event_id, available_seats=seats)
 
 
@@ -187,17 +180,13 @@ async def create_ticket(
         raise HTTPException(status_code=400, detail="Registration deadline has passed")
 
     # Check seat availability
-    cached = seats_cache.get(str(body.event_id))
-    if cached is None:
-        client = EventsProviderClient(
-            settings.events_provider_url, settings.events_provider_api_key
-        )
-        cached = client.seats(str(body.event_id))
-        seats_cache.set(str(body.event_id), cached)
-    if body.seat not in cached:
+    client = EventsProviderClient(
+        settings.events_provider_url, settings.events_provider_api_key
+    )
+    available_seats = client.seats(str(body.event_id))
+    if body.seat not in available_seats:
         raise HTTPException(status_code=400, detail="Seat is not available")
 
-    client = EventsProviderClient(settings.events_provider_url, settings.events_provider_api_key)
     provider_ticket_id = client.register(
         event_id=str(body.event_id),
         first_name=body.first_name,
@@ -232,5 +221,4 @@ async def delete_ticket(
     client = EventsProviderClient(settings.events_provider_url, settings.events_provider_api_key)
     client.unregister(event_id=str(ticket.event_id), ticket_id=str(ticket_id))
     await session.delete(ticket)
-    seats_cache.invalidate(str(ticket.event_id))
     return TicketDeleteResponse()
