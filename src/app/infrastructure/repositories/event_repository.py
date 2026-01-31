@@ -6,6 +6,7 @@ from datetime import date, datetime
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.infrastructure.models import Event, Place
 
@@ -87,7 +88,7 @@ class EventRepository:
         if date_from:
             conditions.append(Event.event_time >= datetime.combine(date_from, datetime.min.time()))
 
-        base_query = select(Event).join(Place)
+        base_query = select(Event).options(joinedload(Event.place)).join(Place)
         count_query = select(func.count()).select_from(Event).join(Place)
         if conditions:
             base_query = base_query.where(and_(*conditions))
@@ -104,6 +105,6 @@ class EventRepository:
 
     async def get_by_id(self, event_id: uuid.UUID) -> Optional[Event]:
         """Get event by ID."""
-        stmt = select(Event).where(Event.id == event_id)
+        stmt = select(Event).options(joinedload(Event.place)).where(Event.id == event_id)
         result = await self._session.execute(stmt)
-        return result.scalar_one_or_none()
+        return result.unique().scalar_one_or_none()
