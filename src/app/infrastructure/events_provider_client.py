@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
-from typing import Any
+from typing import Any, Iterator, Optional
 
 import httpx
 
@@ -91,32 +90,21 @@ class EventsProviderClient:
 
 
 class EventsPaginator:
-    """Iterator over all events from Events Provider API. Follows next until None."""
+    """Cursor pagination: запрос → results, следующий запрос по next, пока next не None."""
 
     def __init__(self, client: EventsProviderClient, changed_at: str) -> None:
         self._client = client
         self._changed_at = changed_at
 
-    def __iter__(self) -> "EventsPaginator":
-        return self
-
-    def __next__(self) -> dict[str, Any]:
-        if not hasattr(self, "_results"):
-            data = self._client.events(self._changed_at)
-            self._results = data.get("results", [])
-            self._next_url = data.get("next")
-            self._idx = 0
-
-        while self._idx < len(self._results):
-            event = self._results[self._idx]
-            self._idx += 1
-            return event
-
-        if self._next_url:
-            data = self._client.events_by_url(self._next_url)
-            self._results = data.get("results", [])
-            self._next_url = data.get("next")
-            self._idx = 0
-            if self._results:
-                return self.__next__()
-        raise StopIteration
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        next_url: Optional[str] = None
+        while True:
+            if next_url is None:
+                data = self._client.events(self._changed_at)
+            else:
+                data = self._client.events_by_url(next_url)
+            for event in data.get("results", []):
+                yield event
+            next_url = data.get("next")
+            if next_url is None:
+                break
