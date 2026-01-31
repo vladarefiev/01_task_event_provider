@@ -43,6 +43,7 @@ async def run_sync(
             place = await event_repo.upsert_place(place_data)
             await event_repo.upsert_event(event_data, place)
             count += 1
+            logger.info("Processed event %d: %s", count, event_data["id"])
 
             event_changed = event_data.get("changed_at")
             if event_changed:
