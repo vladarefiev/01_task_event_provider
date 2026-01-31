@@ -35,6 +35,7 @@ class EventRepository:
                 seats_pattern=place_data.get("seats_pattern"),
             )
             self._session.add(place)
+            await self._session.flush()
         return place
 
     async def upsert_event(self, event_data: dict, place: Place) -> Event:
@@ -72,6 +73,7 @@ class EventRepository:
                 changed_at=changed_at,
             )
             self._session.add(event)
+            await self._session.flush()
         return event
 
     async def list_events(
