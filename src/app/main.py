@@ -1,10 +1,8 @@
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from app.api.routes import router
-from app.config import settings
 from app.infrastructure.database import engine, Base
 
 logging.basicConfig(
@@ -21,36 +19,19 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables created")
 
-    # Background sync task - runs every 24 hours
-    from app.infrastructure.events_provider_client import EventsProviderClient
-    from app.services.sync_service import run_sync
+    # Reset stale "running" lock from previous run (e.g. after crash)
     from app.infrastructure.database import async_session_maker
+    from app.infrastructure.repositories.sync_repository import SyncMetadataRepository
 
-    sync_interval_seconds = 24 * 60 * 60  # 24 hours
-
-    async def sync_loop() -> None:
-        await asyncio.sleep(10)  # Wait for app to be ready
-        client = EventsProviderClient(
-            settings.events_provider_url, settings.events_provider_api_key
-        )
-        while True:
-            try:
-                async with async_session_maker() as session:
-                    await run_sync(session, client)
-            except Exception as e:
-                logger.exception("Periodic sync failed: %s", e)
-            await asyncio.sleep(sync_interval_seconds)
-
-    sync_task = asyncio.create_task(sync_loop())
-    logger.info("Background sync task started")
+    async with async_session_maker() as session:
+        sync_repo = SyncMetadataRepository(session)
+        meta = await sync_repo.get_or_create()
+        if meta.sync_status == "running":
+            await sync_repo.update_status("idle")
+            await session.commit()
+            logger.info("Cleared stale sync status 'running' from previous run")
 
     yield
-
-    sync_task.cancel()
-    try:
-        await sync_task
-    except asyncio.CancelledError:
-        pass
 
 
 app = FastAPI(
