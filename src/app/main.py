@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -7,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.routes import router
 from app.infrastructure.database import engine, Base
+from app.services.outbox_worker import outbox_worker_loop
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,7 +36,18 @@ async def lifespan(app: FastAPI):
             await session.commit()
             logger.info("Cleared stale sync status 'running' from previous run")
 
+    # Start outbox worker as a background coroutine
+    worker_task = asyncio.create_task(outbox_worker_loop())
+    logger.info("Outbox worker started")
+
     yield
+
+    # Gracefully stop the worker
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        logger.info("Outbox worker stopped")
 
 
 app = FastAPI(

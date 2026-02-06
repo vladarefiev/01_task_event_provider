@@ -65,6 +65,7 @@ class TicketCreateRequest(BaseModel):
     last_name: str
     email: EmailStr
     seat: str
+    idempotency_key: Optional[str] = None
 
 
 class TicketCreateResponse(BaseModel):

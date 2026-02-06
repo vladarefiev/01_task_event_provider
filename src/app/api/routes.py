@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from typing import Optional
 import uuid
@@ -25,6 +27,8 @@ from app.infrastructure.database import async_session_maker, get_db
 from app.infrastructure.events_provider_client import EventsProviderClient
 from app.infrastructure.models import Event, Place
 from app.infrastructure.repositories.event_repository import EventRepository
+from app.infrastructure.repositories.idempotency_repository import IdempotencyRepository
+from app.infrastructure.repositories.outbox_repository import OutboxRepository
 from app.infrastructure.repositories.ticket_repository import TicketRepository
 from app.services.sync_service import run_sync
 
@@ -161,11 +165,38 @@ async def get_seats(
     return SeatsResponse(event_id=event_id, available_seats=seats)
 
 
+def _compute_request_hash(body: TicketCreateRequest) -> str:
+    """Compute a deterministic hash of the request body (excluding idempotency_key)."""
+    data = {
+        "event_id": str(body.event_id),
+        "first_name": body.first_name,
+        "last_name": body.last_name,
+        "email": str(body.email),
+        "seat": body.seat,
+    }
+    raw = json.dumps(data, sort_keys=True)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
 @router.post("/tickets", response_model=TicketCreateResponse, status_code=201)
 async def create_ticket(
     body: TicketCreateRequest,
     session: AsyncSession = Depends(get_db),
 ) -> TicketCreateResponse:
+    # --- Idempotency check ---
+    if body.idempotency_key is not None:
+        idem_repo = IdempotencyRepository(session)
+        existing = await idem_repo.get_by_key(body.idempotency_key)
+        if existing is not None:
+            request_hash = _compute_request_hash(body)
+            if existing.request_hash != request_hash:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Idempotency key already used with different request data",
+                )
+            return TicketCreateResponse(ticket_id=existing.ticket_id)
+
+    # --- Validate event ---
     event_repo = EventRepository(session)
     event = await event_repo.get_by_id(body.event_id)
     if not event:
@@ -179,7 +210,7 @@ async def create_ticket(
     if reg_deadline < now:
         raise HTTPException(status_code=400, detail="Registration deadline has passed")
 
-    # Check seat availability
+    # --- Check seat availability ---
     client = EventsProviderClient(
         settings.events_provider_url, settings.events_provider_api_key
     )
@@ -187,6 +218,7 @@ async def create_ticket(
     if body.seat not in available_seats:
         raise HTTPException(status_code=400, detail="Seat is not available")
 
+    # --- Register via Events Provider ---
     provider_ticket_id = client.register(
         event_id=str(body.event_id),
         first_name=body.first_name,
@@ -195,6 +227,7 @@ async def create_ticket(
         seat=body.seat,
     )
 
+    # --- Save ticket + outbox record + idempotency key in one transaction ---
     ticket_repo = TicketRepository(session)
     ticket = await ticket_repo.create(
         event_id=body.event_id,
@@ -204,6 +237,29 @@ async def create_ticket(
         email=str(body.email),
         seat=body.seat,
     )
+
+    # Outbox: create notification record in the same transaction
+    outbox_repo = OutboxRepository(session)
+    notification_message = (
+        f"Вы успешно зарегистрированы на мероприятие - {event.name}"
+    )
+    await outbox_repo.create(
+        event_type="ticket_purchased",
+        payload={
+            "message": notification_message,
+            "reference_id": provider_ticket_id,
+            "idempotency_key": f"ticket-{provider_ticket_id}",
+        },
+    )
+
+    # Idempotency: save result if key was provided
+    if body.idempotency_key is not None:
+        idem_repo = IdempotencyRepository(session)
+        await idem_repo.create(
+            idempotency_key=body.idempotency_key,
+            request_hash=_compute_request_hash(body),
+            ticket_id=ticket.provider_ticket_id,
+        )
 
     return TicketCreateResponse(ticket_id=ticket.provider_ticket_id)
 

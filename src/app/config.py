@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     events_provider_url: str = "http://events-provider.dev-1.python-labs.ru"
     events_provider_api_key: str = ""
 
+    capashino_url: str = "https://capashino.dev-1.python-labs.ru"
+    capashino_api_key: str = "b5brEutpPGGf6mGNqpTbFTAZPL8ILEuJ2RQf3jM7P-4"
+
+    outbox_poll_interval: int = 5
+    outbox_max_attempts: int = 10
+
     host: str = "0.0.0.0"
     port: int = 8000
 
