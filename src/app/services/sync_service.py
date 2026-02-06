@@ -51,11 +51,12 @@ async def run_sync(
             count += 1
             logger.info("Processed event %d: %s", count, event_data["id"])
 
-            event_changed = event_data.get("changed_at")
-            if event_changed:
-                dt = event_changed[:10]  # YYYY-MM-DD
-                if dt > max_changed_at:
-                    max_changed_at = dt
+            for change_key in ("changed_at", "status_changed_at"):
+                event_changed = event_data.get(change_key)
+                if event_changed:
+                    dt = event_changed[:10]  # YYYY-MM-DD
+                    if dt > max_changed_at:
+                        max_changed_at = dt
 
             if count % COMMIT_BATCH_SIZE == 0:
                 await session.commit()
