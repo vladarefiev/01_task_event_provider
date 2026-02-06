@@ -8,6 +8,7 @@ import uuid
 from datetime import date, datetime, timezone
 from urllib.parse import urlencode
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -148,6 +149,12 @@ async def get_event(
     return _event_to_detail_response(event)
 
 
+def _event_not_available_detail(status: str) -> str:
+    if status == "finished":
+        return "Event has finished"
+    return "Event is not published for registration"
+
+
 @router.get("/events/{event_id}/seats", response_model=SeatsResponse)
 async def get_seats(
     event_id: uuid.UUID,
@@ -158,10 +165,21 @@ async def get_seats(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     if event.status != "published":
-        raise HTTPException(status_code=400, detail="Event is not published for registration")
+        raise HTTPException(
+            status_code=400,
+            detail=_event_not_available_detail(event.status),
+        )
 
     client = EventsProviderClient(settings.events_provider_url, settings.events_provider_api_key)
-    seats = client.seats(str(event_id))
+    try:
+        seats = client.seats(str(event_id))
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code >= 500:
+            raise HTTPException(
+                status_code=400,
+                detail="Event is not available for registration (upstream unavailable)",
+            ) from e
+        raise
     return SeatsResponse(event_id=event_id, available_seats=seats)
 
 
@@ -202,7 +220,10 @@ async def create_ticket(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     if event.status != "published":
-        raise HTTPException(status_code=400, detail="Event is not published for registration")
+        raise HTTPException(
+            status_code=400,
+            detail=_event_not_available_detail(event.status),
+        )
     now = datetime.now(timezone.utc)
     reg_deadline = event.registration_deadline
     if reg_deadline.tzinfo is None:
@@ -214,18 +235,34 @@ async def create_ticket(
     client = EventsProviderClient(
         settings.events_provider_url, settings.events_provider_api_key
     )
-    available_seats = client.seats(str(body.event_id))
+    try:
+        available_seats = client.seats(str(body.event_id))
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code >= 500:
+            raise HTTPException(
+                status_code=400,
+                detail="Event is not available for registration (upstream unavailable)",
+            ) from e
+        raise
     if body.seat not in available_seats:
         raise HTTPException(status_code=400, detail="Seat is not available")
 
     # --- Register via Events Provider ---
-    provider_ticket_id = client.register(
-        event_id=str(body.event_id),
-        first_name=body.first_name,
-        last_name=body.last_name,
-        email=str(body.email),
-        seat=body.seat,
-    )
+    try:
+        provider_ticket_id = client.register(
+            event_id=str(body.event_id),
+            first_name=body.first_name,
+            last_name=body.last_name,
+            email=str(body.email),
+            seat=body.seat,
+        )
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code >= 500:
+            raise HTTPException(
+                status_code=400,
+                detail="Event is not available for registration (upstream unavailable)",
+            ) from e
+        raise
 
     # --- Save ticket + outbox record + idempotency key in one transaction ---
     ticket_repo = TicketRepository(session)
