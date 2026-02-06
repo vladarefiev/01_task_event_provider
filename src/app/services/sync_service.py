@@ -31,11 +31,12 @@ async def run_sync(
     await session.commit()
 
     try:
-        changed_at = (
-            changed_at_override
-            if changed_at_override is not None
-            else (meta.last_changed_at or FIRST_SYNC_DATE)
-        )
+        if changed_at_override is not None:
+            changed_at = changed_at_override
+        elif meta.last_sync_time is not None:
+            changed_at = meta.last_sync_time.strftime("%Y-%m-%d")
+        else:
+            changed_at = FIRST_SYNC_DATE
         logger.info("Starting sync with changed_at=%s", changed_at)
 
         max_changed_at = changed_at
