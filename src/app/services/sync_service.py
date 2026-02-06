@@ -33,8 +33,8 @@ async def run_sync(
     try:
         if changed_at_override is not None:
             changed_at = changed_at_override
-        elif meta.last_sync_time is not None:
-            changed_at = meta.last_sync_time.strftime("%Y-%m-%d")
+        elif meta.last_changed_at:
+            changed_at = meta.last_changed_at
         else:
             changed_at = FIRST_SYNC_DATE
         logger.info("Starting sync with changed_at=%s", changed_at)
