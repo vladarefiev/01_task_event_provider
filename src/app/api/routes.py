@@ -10,9 +10,11 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import (
+    DatabaseCleanupResponse,
     EventDetailResponse,
     EventListResponse,
     EventsListResponse,
@@ -24,7 +26,7 @@ from app.api.schemas import (
     TicketDeleteResponse,
 )
 from app.config import settings
-from app.infrastructure.database import async_session_maker, get_db
+from app.infrastructure.database import Base, async_session_maker, get_db
 from app.infrastructure.events_provider_client import EventsProviderClient
 from app.infrastructure.models import Event, Place
 from app.infrastructure.repositories.event_repository import EventRepository
@@ -92,6 +94,23 @@ def _event_to_detail_response(event: Event) -> EventDetailResponse:
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.post("/testing/clear-db", response_model=DatabaseCleanupResponse)
+async def clear_database(
+    session: AsyncSession = Depends(get_db),
+) -> DatabaseCleanupResponse:
+    if not settings.enable_test_api:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    table_names = [table.name for table in Base.metadata.sorted_tables]
+    if table_names:
+        tables_clause = ", ".join(f'"{name}"' for name in table_names)
+        await session.execute(
+            text(f"TRUNCATE TABLE {tables_clause} RESTART IDENTITY CASCADE")
+        )
+
+    return DatabaseCleanupResponse(success=True, tables_cleared=len(table_names))
 
 
 @router.post("/sync/trigger")
