@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     outbox_poll_interval: int = 5
     outbox_max_attempts: int = 10
+    enable_test_api: bool = False
 
     host: str = "0.0.0.0"
     port: int = 8000

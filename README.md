@@ -37,6 +37,7 @@ API будет доступен на http://localhost:8000
 ## API Endpoints
 
 - `GET /api/health` - health check
+- `POST /api/testing/clear-db` - очистка всех данных БД (только при `ENABLE_TEST_API=true`)
 - `POST /api/sync/trigger` - ручной запуск синхронизации
 - `GET /api/events` - список событий (date_from, page, page_size)
 - `GET /api/events/{event_id}` - детали события
@@ -89,5 +90,6 @@ API будет доступен на http://localhost:8000
 | `CAPASHINO_API_KEY` | API-ключ Capashino | — |
 | `OUTBOX_POLL_INTERVAL` | Интервал опроса outbox (сек) | `5` |
 | `OUTBOX_MAX_ATTEMPTS` | Максимум попыток отправки | `10` |
+| `ENABLE_TEST_API` | Разрешить тестовые endpoint'ы | `false` |
 | `HOST` | Хост сервера | `0.0.0.0` |
 | `PORT` | Порт сервера | `8000` |

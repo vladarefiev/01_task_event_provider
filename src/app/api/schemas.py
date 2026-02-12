@@ -74,3 +74,8 @@ class TicketCreateResponse(BaseModel):
 
 class TicketDeleteResponse(BaseModel):
     success: bool = True
+
+
+class DatabaseCleanupResponse(BaseModel):
+    success: bool = True
+    tables_cleared: int
