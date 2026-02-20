@@ -1,12 +1,11 @@
-FROM python:3.12-slim
+FROM python:3.12-slim as base
 
 WORKDIR /app
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY pyproject.toml .
+RUN pip install uv
+RUN uv lock
 
-# Copy project files
-COPY pyproject.toml ./
 COPY src/ ./src/
 COPY run.sh ./
 RUN chmod +x run.sh
@@ -23,4 +22,4 @@ RUN addgroup --system --gid 1000 appuser && \
 
 USER appuser
 
-CMD ["./run.sh"]
+CMD ["bash", "./run.sh"]
