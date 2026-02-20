@@ -17,4 +17,10 @@ ENV PORT=8000
 
 EXPOSE 8000
 
+RUN addgroup --system --gid 1000 appuser && \
+    adduser --system --uid 1000 --ingroup appuser appuser && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
 CMD ["./run.sh"]
