@@ -5,11 +5,11 @@ WORKDIR /app
 COPY pyproject.toml .
 RUN pip install uv
 RUN uv lock
+RUN uv sync --no-dev
 
 COPY src/ ./src/
 COPY run.sh ./
 RUN chmod +x run.sh
-RUN uv sync --no-dev
 
 ENV PYTHONPATH=/app/src
 ENV PORT=8000
